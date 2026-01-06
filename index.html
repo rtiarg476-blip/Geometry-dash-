@@ -1,76 +1,342 @@
-<div id="auth-screen" class="screen active">
-    <div class="auth-card">
-        <h1 style="color: var(--primary-orange); font-size: 3rem; margin-bottom: 5px;">FLICK_</h1>
-        <p style="color: var(--border-color); margin-bottom: 25px; font-size: 1.2rem;">SECURE TERMINAL ACCESS</p>
-        
-        <div id="phone-step">
-            <div style="text-align: left; margin-bottom: 15px;">
-                <label style="color: var(--primary-orange); font-size: 1.2rem;">PHONE NUMBER</label>
-                <input type="tel" id="phone-input" placeholder="+7 (___) ___-__-__" maxlength="18">
-            </div>
-            <button onclick="requestOTP()" style="width: 100%;">GET ACCESS CODE</button>
-        </div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flick Messenger (Lite & Real)</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-orange: #FF6B35;
+            --deep-blue: #004E89;
+            --dark-bg: #0b1016;
+            --panel-bg: rgba(11, 16, 22, 0.85); /* Без блюра, полупрозрачный темный */
+            --border-color: #1A659E;
+            --text-white: #EFEFEF;
+        }
 
-        <div id="otp-step" style="display: none;">
-            <div style="text-align: left; margin-bottom: 15px;">
-                <label style="color: var(--primary-orange); font-size: 1.2rem;">SMS CODE (0000)</label>
-                <input type="text" id="otp-input" placeholder="XXXX" maxlength="4" style="text-align: center; letter-spacing: 10px;">
-            </div>
-            <button onclick="verifyOTP()" style="width: 100%;">VERIFY & ENTER</button>
-            <p onclick="resetAuth()" style="margin-top: 15px; cursor: pointer; color: #555;">Wrong number?</p>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #000;
+            background-image: radial-gradient(circle at 50% 50%, #1a2a3a 0%, #000 100%);
+            height: 100vh;
+            color: var(--text-white);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Оптимизированный фон (без тяжелого блюра) */
+        .scanlines {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Легкие CSS-фигуры вместо размытых блобов */
+        .bg-shape {
+            position: absolute;
+            opacity: 0.4;
+            z-index: -1;
+        }
+        .shape-1 {
+            top: 10%; left: 10%; width: 200px; height: 200px;
+            border: 4px solid var(--primary-orange);
+            box-shadow: 0 0 20px var(--primary-orange);
+            animation: spin 20s linear infinite;
+        }
+        .shape-2 {
+            bottom: 10%; right: 10%; width: 300px; height: 300px;
+            border: 4px solid var(--deep-blue);
+            border-radius: 50%;
+            animation: pulse 5s infinite ease-in-out;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+
+        /* --- UI Elements --- */
+        button {
+            background: var(--deep-blue); color: #fff; border: 1px solid var(--primary-orange);
+            padding: 8px 16px; font-family: 'VT323', monospace; font-size: 1.4rem;
+            cursor: pointer; transition: 0.2s; text-transform: uppercase;
+        }
+        button:hover { background: var(--primary-orange); color: #000; }
+        
+        input {
+            background: rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color);
+            color: #fff; padding: 10px; font-family: 'VT323', monospace; font-size: 1.3rem;
+            width: 100%; outline: none;
+        }
+        input:focus { border-color: var(--primary-orange); }
+
+        /* --- Layout --- */
+        .screen { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; }
+        .screen.active { display: flex; }
+
+        .auth-card {
+            width: 350px; padding: 30px;
+            background: var(--panel-bg); border: 2px solid var(--primary-orange);
+            box-shadow: 10px 10px 0 rgba(0,0,0,0.5);
+            text-align: center; z-index: 20;
+        }
+
+        .app-container {
+            width: 95%; max-width: 1100px; height: 90vh;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            display: flex; position: relative; z-index: 20;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px; border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; background: rgba(0,0,0,0.2);
+        }
+        .sidebar-header { padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .add-btn { font-size: 1.5rem; line-height: 1rem; padding: 5px 10px; }
+
+        .contact-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .contact {
+            padding: 10px; margin-bottom: 5px; border: 1px solid transparent;
+            cursor: pointer; display: flex; align-items: center; color: #aaa;
+        }
+        .contact:hover, .contact.active {
+            background: rgba(255, 107, 53, 0.1); border: 1px solid var(--primary-orange); color: #fff;
+        }
+        .avatar {
+            width: 40px; height: 40px; background: var(--deep-blue); color: #fff;
+            display: flex; justify-content: center; align-items: center;
+            margin-right: 10px; font-size: 1.2rem; border: 1px solid #fff;
+        }
+
+        /* Chat */
+        .chat-area { flex: 1; display: flex; flex-direction: column; }
+        .chat-header {
+            padding: 15px; border-bottom: 1px solid var(--border-color);
+            background: rgba(0,0,0,0.3); font-size: 1.4rem;
+        }
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        
+        .msg {
+            max-width: 80%; padding: 10px 15px; font-size: 1.3rem;
+            border-radius: 4px; position: relative; word-wrap: break-word;
+        }
+        .msg-in { align-self: flex-start; background: #2a3b4c; border-left: 3px solid #fff; }
+        .msg-out { align-self: flex-end; background: var(--primary-orange); color: #000; border-right: 3px solid #fff; }
+
+        .input-area { padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: rgba(0,0,0,0.3); }
+
+        /* Modal */
+        .modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #000; border: 2px solid var(--primary-orange); padding: 20px; width: 300px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="scanlines"></div>
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+
+    <div id="auth-screen" class="screen active">
+        <div class="auth-card">
+            <h1 style="color: var(--primary-orange); font-size: 3rem; margin-bottom: 20px;">FLICK_</h1>
+            <input type="text" id="username" placeholder="Enter your Nickname">
+            <button onclick="login()" style="width: 100%; margin-top: 15px;">CONNECT</button>
+            <p style="margin-top:15px; font-size: 1rem; color: #888;">*Откройте в 2-х вкладках для чата</p>
         </div>
     </div>
-</div>
 
-<script>
-    // --- AUTH LOGIC WITH PHONE ---
-    let tempPhone = "";
+    <div id="app-screen" class="screen">
+        <div class="app-container">
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <span id="my-name" style="color: var(--primary-orange)">USER</span>
+                    <button class="add-btn" onclick="showAddModal()">+</button>
+                </div>
+                <div class="contact-list" id="contact-list">
+                    </div>
+                <div style="padding: 10px; border-top: 1px solid var(--border-color);">
+                    <button onclick="logout()" style="width: 100%; background: transparent; border: 1px solid #555; font-size: 1rem;">LOGOUT</button>
+                </div>
+            </div>
 
-    // Маска для телефона
-    const phoneInput = document.getElementById('phone-input');
-    phoneInput.addEventListener('input', (e) => {
-        let x = e.target.value.replace(/\D/g, '').match(/(\d{0,1})(\d{0,3})(\d{0,3})(\d{0,2})(\d{0,2})/);
-        e.target.value = !x[2] ? x[1] : '+' + x[1] + ' (' + x[2] + ') ' + x[3] + (x[4] ? '-' + x[4] : '') + (x[5] ? '-' + x[5] : '');
-    });
+            <div class="chat-area">
+                <div class="chat-header" id="chat-header">Select a contact to chat</div>
+                <div class="messages" id="messages"></div>
+                <div class="input-area">
+                    <input type="text" id="msg-input" placeholder="Type message..." disabled>
+                    <button onclick="sendMessage()" id="send-btn" disabled>SEND</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    function requestOTP() {
-        const phone = phoneInput.value;
-        if (phone.length < 16) return alert("Введите полный номер телефона!");
-        
-        tempPhone = phone;
-        document.getElementById('phone-step').style.display = 'none';
-        document.getElementById('otp-step').style.display = 'block';
-        
-        // В реальном приложении здесь уходит запрос на бэкенд
-        console.log("SMS sent to " + phone);
-    }
+    <div id="add-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="color: var(--primary-orange); margin-bottom: 10px;">ADD CONTACT</h3>
+            <input type="text" id="new-contact-name" placeholder="Contact Nickname">
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="addContact()" style="flex:1">ADD</button>
+                <button onclick="closeModal()" style="flex:1; background: #333; border: 1px solid #555;">CANCEL</button>
+            </div>
+        </div>
+    </div>
 
-    function verifyOTP() {
-        const otp = document.getElementById('otp-input').value;
-        if (otp === "0000") { // Тестовый код
-            login(tempPhone);
-        } else {
-            alert("Неверный код! Попробуйте 0000");
+    <script>
+        // --- REAL CHAT LOGIC (LOCAL STORAGE BASED) ---
+        let currentUser = null;
+        let activeContact = null;
+        let contacts = [];
+
+        // 1. Auth
+        function login() {
+            const name = document.getElementById('username').value.trim();
+            if(!name) return alert("Введите ник!");
+            
+            currentUser = name;
+            document.getElementById('my-name').innerText = currentUser;
+            document.getElementById('auth-screen').classList.remove('active');
+            document.getElementById('app-screen').classList.add('active');
+            
+            loadContacts();
+            
+            // Listen for messages from other tabs
+            window.addEventListener('storage', (e) => {
+                if(e.key === 'flick_messages') {
+                    loadMessages(); // Reload chat if database changed
+                }
+            });
         }
-    }
 
-    function resetAuth() {
-        document.getElementById('phone-step').style.display = 'block';
-        document.getElementById('otp-step').style.display = 'none';
-    }
+        function logout() {
+            location.reload();
+        }
 
-    function login(phoneIdentifier) {
-        currentUser = phoneIdentifier;
-        document.getElementById('my-name').innerText = currentUser;
-        document.getElementById('auth-screen').classList.remove('active');
-        document.getElementById('app-screen').classList.add('active');
-        
-        loadContacts();
-        
-        window.addEventListener('storage', (e) => {
-            if(e.key === 'flick_messages') loadMessages();
-        });
-    }
+        // 2. Contacts Management
+        function showAddModal() {
+            document.getElementById('add-modal').classList.add('active');
+        }
+        function closeModal() {
+            document.getElementById('add-modal').classList.remove('active');
+        }
 
-    // Остальные функции (logout, addContact, sendMessage и т.д.) остаются прежними из предыдущего ответа
-</script>
+        function addContact() {
+            const name = document.getElementById('new-contact-name').value.trim();
+            if(!name) return;
+            if(name === currentUser) return alert("Нельзя добавить себя!");
+            
+            // Check if exists
+            if(!contacts.includes(name)) {
+                contacts.push(name);
+                saveContacts();
+                renderContacts();
+            }
+            closeModal();
+            document.getElementById('new-contact-name').value = '';
+        }
+
+        function saveContacts() {
+            // Сохраняем контакты только для этого браузера/пользователя (симуляция)
+            localStorage.setItem('flick_contacts_' + currentUser, JSON.stringify(contacts));
+        }
+
+        function loadContacts() {
+            const stored = localStorage.getItem('flick_contacts_' + currentUser);
+            contacts = stored ? JSON.parse(stored) : [];
+            renderContacts();
+        }
+
+        function renderContacts() {
+            const list = document.getElementById('contact-list');
+            list.innerHTML = '';
+            contacts.forEach(name => {
+                const div = document.createElement('div');
+                div.className = 'contact';
+                if(activeContact === name) div.classList.add('active');
+                div.innerHTML = `<div class="avatar">${name[0].toUpperCase()}</div> ${name}`;
+                div.onclick = () => openChat(name);
+                list.appendChild(div);
+            });
+        }
+
+        // 3. Chat System
+        function openChat(name) {
+            activeContact = name;
+            document.getElementById('chat-header').innerText = "Chat with " + name;
+            document.getElementById('msg-input').disabled = false;
+            document.getElementById('send-btn').disabled = false;
+            
+            renderContacts(); // update active state
+            loadMessages();
+        }
+
+        function getChatID() {
+            // Создаем уникальный ID чата: "Alice_Bob" (алфавитный порядок)
+            // Чтобы Alice писала Bob, и Bob видел этот же чат с Alice
+            const participants = [currentUser, activeContact].sort();
+            return 'chat_' + participants.join('_');
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('msg-input');
+            const text = input.value.trim();
+            if(!text) return;
+
+            const chatID = getChatID();
+            const msgObj = {
+                sender: currentUser,
+                text: text,
+                time: Date.now()
+            };
+
+            // Get existing messages
+            let history = JSON.parse(localStorage.getItem('flick_messages') || "{}");
+            if(!history[chatID]) history[chatID] = [];
+            
+            history[chatID].push(msgObj);
+
+            // Save to global storage
+            localStorage.setItem('flick_messages', JSON.stringify(history));
+            
+            input.value = '';
+            loadMessages();
+        }
+
+        function loadMessages() {
+            if(!activeContact) return;
+            
+            const chatID = getChatID();
+            const allHistory = JSON.parse(localStorage.getItem('flick_messages') || "{}");
+            const chatMsgs = allHistory[chatID] || [];
+
+            const container = document.getElementById('messages');
+            container.innerHTML = '';
+
+            chatMsgs.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = msg.sender === currentUser ? 'msg msg-out' : 'msg msg-in';
+                div.innerText = msg.text;
+                // Add tooltip with sender name
+                div.title = msg.sender;
+                container.appendChild(div);
+            });
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+    </script>
+</body>
+</html>
